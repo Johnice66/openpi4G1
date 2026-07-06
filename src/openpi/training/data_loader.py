@@ -2,6 +2,7 @@ from collections.abc import Iterator, Sequence
 import logging
 import multiprocessing
 import os
+import pathlib
 import typing
 from typing import Literal, Protocol, SupportsIndex, TypeVar
 
@@ -136,10 +137,19 @@ def create_torch_dataset(
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
+    if data_config.local_dataset_only and data_config.dataset_root is None:
+        raise ValueError(f"Dataset {repo_id!r} requires an explicit local dataset root")
+    if data_config.dataset_root is not None:
+        dataset_root = pathlib.Path(data_config.dataset_root)
+        if not (dataset_root / "meta" / "info.json").is_file():
+            raise FileNotFoundError(
+                f"Local LeRobot dataset root does not contain meta/info.json: {dataset_root}"
+            )
 
-    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id, root=data_config.dataset_root)
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
+        root=data_config.dataset_root,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },

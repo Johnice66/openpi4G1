@@ -17,6 +17,7 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
+import openpi.policies.agibot_g01_policy as agibot_g01_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -65,6 +66,10 @@ class AssetsConfig:
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
+    # Optional local LeRobot dataset root. When set, no Hub download is needed.
+    dataset_root: str | None = None
+    # If true, the data loader refuses to fall back to downloading this dataset.
+    local_dataset_only: bool = False
     # Directory within the assets directory containing the data assets.
     asset_id: str | None = None
     # Contains precomputed normalization stats. If None, normalization will not be performed.
@@ -167,6 +172,8 @@ class ModelTransformFactory(GroupFactory):
 class DataConfigFactory(abc.ABC):
     # The LeRobot repo id.
     repo_id: str = tyro.MISSING
+    # Optional local LeRobot dataset root. This remains a regular CLI-overridable field.
+    dataset_root: str | None = None
     # Determines how the assets will be loaded.
     assets: AssetsConfig = dataclasses.field(default_factory=AssetsConfig)
     # Base config that will be updated by the factory.
@@ -182,6 +189,7 @@ class DataConfigFactory(abc.ABC):
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
+            dataset_root=self.dataset_root,
             asset_id=asset_id,
             norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), asset_id),
             use_quantile_norm=model_config.model_type != ModelType.PI0,
@@ -275,6 +283,46 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotAgiBotG01DataConfig(DataConfigFactory):
+    """Data pipeline for the AgiBot G01 Genie Studio a2d dataset."""
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "images": {
+                            "top_head": "observation.images.top_head",
+                            "hand_left": "observation.images.hand_left",
+                            "hand_right": "observation.images.hand_right",
+                        },
+                        "state": "observation.state",
+                        "actions": "action",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+        data_transforms = _transforms.Group(
+            inputs=[agibot_g01_policy.AgiBotG01Inputs()],
+            outputs=[agibot_g01_policy.AgiBotG01Outputs()],
+        ).push(
+            inputs=[_transforms.DeltaActions(agibot_g01_policy.JOINT_ACTION_MASK)],
+            outputs=[_transforms.AbsoluteActions(agibot_g01_policy.JOINT_ACTION_MASK)],
+        )
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=ModelTransformFactory()(model_config),
+            action_sequence_keys=("action",),
+            local_dataset_only=True,
         )
 
 
@@ -824,6 +872,27 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=20_000,
         batch_size=64,
+    ),
+    #
+    # Fine-tuning AgiBot G01 config.
+    #
+    TrainConfig(
+        name="pi05_agibot_g01",
+        model=pi0_config.Pi0Config(pi05=True, action_dim=32, action_horizon=16),
+        data=LeRobotAgiBotG01DataConfig(
+            repo_id="agibot/task_5093",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=30_000,
+        policy_metadata={
+            "robot_type": "agibot_g01",
+            "dataset_fps": 30,
+            "action_horizon": 16,
+            "policy_action_dim": 16,
+            "state_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
+            "action_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
+        },
     ),
     #
     # Fine-tuning DROID configs.

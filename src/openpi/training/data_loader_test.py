@@ -1,6 +1,8 @@
 import dataclasses
+from unittest import mock
 
 import jax
+import pytest
 
 from openpi.models import pi0_config
 from openpi.training import config as _config
@@ -82,3 +84,46 @@ def test_with_real_dataset():
 
     for _, actions in batches:
         assert actions.shape == (config.batch_size, config.model.action_horizon, config.model.action_dim)
+
+
+def test_local_dataset_root_is_forwarded(tmp_path):
+    dataset_root = tmp_path / "task_5093"
+    (dataset_root / "meta").mkdir(parents=True)
+    (dataset_root / "meta" / "info.json").write_text("{}")
+    model_config = pi0_config.Pi0Config(action_horizon=16)
+    data_config = _config.DataConfig(
+        repo_id="agibot/task_5093",
+        dataset_root=str(dataset_root),
+        action_sequence_keys=("action",),
+    )
+    metadata = mock.Mock(fps=30, tasks={0: "open the door"})
+
+    with (
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata", return_value=metadata) as meta_cls,
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDataset", return_value=mock.Mock()) as dataset_cls,
+    ):
+        _data_loader.create_torch_dataset(data_config, 16, model_config)
+
+    meta_cls.assert_called_once_with("agibot/task_5093", root=str(dataset_root))
+    assert dataset_cls.call_args.kwargs["root"] == str(dataset_root)
+    assert dataset_cls.call_args.kwargs["delta_timestamps"]["action"] == [index / 30 for index in range(16)]
+
+
+def test_missing_local_dataset_root_fails_before_lerobot(tmp_path):
+    data_config = _config.DataConfig(repo_id="agibot/task_5093", dataset_root=str(tmp_path / "missing"))
+    with (
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata") as meta_cls,
+        pytest.raises(FileNotFoundError, match="meta/info.json"),
+    ):
+        _data_loader.create_torch_dataset(data_config, 16, pi0_config.Pi0Config(action_horizon=16))
+    meta_cls.assert_not_called()
+
+
+def test_required_local_dataset_root_cannot_fall_back_to_hub():
+    data_config = _config.DataConfig(repo_id="agibot/task_5093", local_dataset_only=True)
+    with (
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata") as meta_cls,
+        pytest.raises(ValueError, match="explicit local dataset root"),
+    ):
+        _data_loader.create_torch_dataset(data_config, 16, pi0_config.Pi0Config(action_horizon=16))
+    meta_cls.assert_not_called()

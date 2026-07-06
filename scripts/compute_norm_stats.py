@@ -5,6 +5,9 @@ will compute the mean and standard deviation of the data in the dataset and save
 to the config assets directory.
 """
 
+import dataclasses
+import pathlib
+
 import numpy as np
 import tqdm
 import tyro
@@ -86,8 +89,12 @@ def create_rlds_dataloader(
     return data_loader, num_batches
 
 
-def main(config_name: str, max_frames: int | None = None):
+def main(config_name: str, dataset_root: pathlib.Path | None = None, max_frames: int | None = None):
     config = _config.get_config(config_name)
+    if dataset_root is not None:
+        config = dataclasses.replace(config, data=dataclasses.replace(config.data, dataset_root=str(dataset_root)))
+    elif isinstance(config.data, _config.LeRobotAgiBotG01DataConfig):
+        raise ValueError("pi05_agibot_g01 requires --dataset-root pointing to the task_5093 directory")
     data_config = config.data.create(config.assets_dirs, config.model)
 
     if data_config.rlds_data_dir is not None:
