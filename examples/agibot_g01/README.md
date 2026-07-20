@@ -18,20 +18,43 @@ ROS2 客户端默认执行: 前 8 步，也就是 --execute-horizon 8
 
 ## 单任务训练
 
-在受支持的 Linux/NVIDIA 机器上安装 openpi，然后从本地数据集计算归一化统计量：
+在受支持的 Linux/NVIDIA 机器上安装 openpi。建议先为每个任务定义独立的 dataset root、asset id 和实验名：
 
 ```bash
-uv run scripts/compute_norm_stats.py \
-  --config-name pi05_agibot_g01 \
-  --dataset-root /path/to/task_5093
+TASK_ID=task_6030
+DATASET_ROOT=./dataset/$TASK_ID
+ASSET_ID=agibot/$TASK_ID
+EXP_NAME=g01_$TASK_ID
+```
+
+使用 G01 快速统计脚本计算归一化统计量。这个脚本只读取 parquet 里的 `observation.state` 和 `action`，不会解码三路视频，比通用 `scripts/compute_norm_stats.py` 更适合 G01 数据：
+
+```bash
+uv run scripts/compute_agibot_g01_norm_stats_fast.py \
+  --dataset-root $DATASET_ROOT
+```
+
+默认会从 `DATASET_ROOT` 的目录名推断 asset id。比如 `./dataset/task_6030` 会写到：
+
+```text
+assets/pi05_agibot_g01/agibot/task_6030/norm_stats.json
+```
+
+如果你的目录名和希望使用的 asset id 不一致，显式传入：
+
+```bash
+uv run scripts/compute_agibot_g01_norm_stats_fast.py \
+  --dataset-root $DATASET_ROOT \
+  --asset-id $ASSET_ID
 ```
 
 启动 π0.5 全参数微调。根据可用 GPU 选择 `--batch-size` 和 `--fsdp-devices`：
 
 ```bash
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
-  --data.dataset-root /path/to/task_5093 \
-  --exp-name g01_task_5093 \
+  --data.repo-id $ASSET_ID \
+  --data.dataset-root $DATASET_ROOT \
+  --exp-name $EXP_NAME \
   --overwrite
 ```
 
@@ -49,18 +72,18 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
 
 多任务训练使用 `scripts/agibot_g01_multi_train.py`，不会修改原始 LeRobot 数据集，只在训练时把多个本地数据集混合起来。每个数据集都必须是同一套 G01 数据格式：本地 root 下存在 `meta/info.json`，原始 state/action schema 一致，并且相机、state、action 字段能通过当前 G01 transform 读取。
 
-推荐先定义路径变量：
+推荐先定义路径变量，并为混合数据集使用独立的 asset id：
 
 ```bash
 TASK_5093=/path/to/task_5093
 TASK_6030=/path/to/task_6030
 TASK_7001=/path/to/task_7001
 
-ASSET_ID=agibot/task_5093
-ASSETS_BASE=./assets_g01_multitask
+ASSET_ID=agibot/g01_mix_5093_6030_7001
+EXP_NAME=g01_mix_5093_6030_7001
 ```
 
-`ASSET_ID=agibot/task_5093` 是为了不改推理配置：`serve_policy.py --policy.config pi05_agibot_g01` 默认会按 `agibot/task_5093` 查找 checkpoint 内的 norm stats。用单独的 `ASSETS_BASE` 可以避免覆盖普通单任务的 `./assets`。如果你改成自定义 asset id，例如 `agibot/g01_mix_5093_6030`，就需要同步新增对应训练配置，或让推理入口显式使用这个 asset id。
+`ASSET_ID` 用来管理混合归一化统计和 checkpoint 内的 norm stats。训练和推理必须使用同一个 `ASSET_ID`，这样不会覆盖单任务统计，也不会把 `task_6030` 的统计写到 `task_5093` 目录下。
 
 先计算混合归一化统计：
 
@@ -69,8 +92,7 @@ uv run scripts/agibot_g01_multi_train.py compute-norm \
   --dataset agibot/task_5093=$TASK_5093 \
   --dataset agibot/task_6030=$TASK_6030 \
   --dataset agibot/task_7001=$TASK_7001 \
-  --asset-id $ASSET_ID \
-  --output-dir $ASSETS_BASE/pi05_agibot_g01/$ASSET_ID
+  --asset-id $ASSET_ID
 ```
 
 再启动多任务 π0.5 全参数微调：
@@ -81,8 +103,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/agibot_g01_multi_train.py trai
   --dataset agibot/task_6030=$TASK_6030 \
   --dataset agibot/task_7001=$TASK_7001 \
   --asset-id $ASSET_ID \
-  --assets-base-dir $ASSETS_BASE \
-  --exp-name g01_multitask_5093_6030_7001 \
+  --exp-name $EXP_NAME \
   --batch-size 64 \
   --num-train-steps 30000 \
   --overwrite
@@ -107,7 +128,6 @@ uv run scripts/agibot_g01_multi_train.py compute-norm \
   --dataset agibot/task_5093=$TASK_5093 \
   --dataset agibot/task_6030=$TASK_6030 \
   --asset-id $ASSET_ID \
-  --output-dir $ASSETS_BASE/pi05_agibot_g01/$ASSET_ID \
   --max-frames 5000
 ```
 
@@ -116,7 +136,6 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/agibot_g01_multi_train.py trai
   --dataset agibot/task_5093=$TASK_5093 \
   --dataset agibot/task_6030=$TASK_6030 \
   --asset-id $ASSET_ID \
-  --assets-base-dir $ASSETS_BASE \
   --exp-name g01_multitask_smoke \
   --batch-size 16 \
   --num-train-steps 100 \
@@ -131,16 +150,18 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/agibot_g01_multi_train.py trai
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/g01_task_5093/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/$EXP_NAME/29999 \
+  --policy.asset-id $ASSET_ID \
   --port 8000
 ```
 
-多任务 checkpoint 也使用同一个 `pi05_agibot_g01` policy config，前提是训练时按上面的推荐保持 `ASSET_ID=agibot/task_5093`：
+多任务 checkpoint 也使用同一个 `pi05_agibot_g01` policy config，但必须传入混合训练时使用的 `ASSET_ID`：
 
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/g01_multitask_5093_6030_7001/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/$EXP_NAME/29999 \
+  --policy.asset-id $ASSET_ID \
   --port 8000
 ```
 

@@ -12,6 +12,8 @@
 | [`src/openpi/training/config.py`](../../src/openpi/training/config.py) | 注册 `LeRobotAgiBotG01DataConfig` 和 `pi05_agibot_g01` |
 | [`src/openpi/training/data_loader.py`](../../src/openpi/training/data_loader.py) | 显式本地 LeRobot 根目录和禁止下载保护 |
 | [`scripts/compute_norm_stats.py`](../../scripts/compute_norm_stats.py) | 归一化统计命令的 `--dataset-root` 覆盖项 |
+| [`scripts/compute_agibot_g01_norm_stats_fast.py`](../../scripts/compute_agibot_g01_norm_stats_fast.py) | G01 parquet 快速归一化统计，默认按本地任务目录推断 `asset_id` |
+| [`scripts/serve_policy.py`](../../scripts/serve_policy.py) | checkpoint 推理服务；支持 `--policy.asset-id` 覆盖 norm stats asset |
 | [`examples/agibot_g01/main.py`](../../examples/agibot_g01/main.py) | ROS2 observation 与命令节点 |
 | [`examples/agibot_g01/control_utils.py`](../../examples/agibot_g01/control_utils.py) | shape 校验、重采样、EMA、融合和关节限制器 |
 
@@ -48,7 +50,7 @@ LeRobot 视频帧是 `[0,1]` 范围内的 CHW float 数组；变换会将其转�
 - 从 LeRobot `task_index` 映射读取任务 prompt；
 - 使用 `create_base_config` 为 π0.5 选择的分位数归一化；
 - 训练 30,000 步，batch/FSDP 沿用通用默认值，除非由命令行覆盖；
-- 使用 `agibot/task_5093` 作为逻辑 repository ID 和归一化 `asset_id`。
+- 默认使用 `agibot/task_5093` 作为逻辑 repository ID；训练其他任务时应通过 `--data.repo-id` 显式改成对应 `asset_id`，例如 `agibot/task_6030`。
 
 物理策略维度是 16，但 `PadStatesAndActions` 会将 state 和 action 数组填充到模型维度 32。`AgiBotG01Outputs` 在采样后移除这些填充维度。
 
@@ -56,20 +58,24 @@ LeRobot 视频帧是 `[0,1]` 范围内的 CHW float 数组；变换会将其转�
 
 ## 本地数据集行为
 
-统计量计算和训练都要求显式提供根目录：
+统计量计算和训练都要求显式提供根目录。推荐使用快速统计脚本，避免通用 LeRobot pipeline 解码视频：
 
 ```bash
-uv run scripts/compute_norm_stats.py \
-  --config-name pi05_agibot_g01 \
-  --dataset-root /path/to/task_5093
+TASK_ID=task_6030
+DATASET_ROOT=/path/to/$TASK_ID
+ASSET_ID=agibot/$TASK_ID
+
+uv run scripts/compute_agibot_g01_norm_stats_fast.py \
+  --dataset-root $DATASET_ROOT
 
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
-  --data.dataset-root /path/to/task_5093 \
-  --exp-name g01_task_5093 \
+  --data.repo-id $ASSET_ID \
+  --data.dataset-root $DATASET_ROOT \
+  --exp-name g01_$TASK_ID \
   --overwrite
 ```
 
-加载器会在构造 LeRobot 对象之前检查 `<root>/meta/info.json`。由于 G01 数据配置将数据集标记为仅本地，未提供根目录时会直接失败，而不会尝试从 Hub 获取 `agibot/task_5093`。
+快速统计脚本默认从 `DATASET_ROOT` 的目录名推断 asset id，例如 `/path/to/task_6030` 对应 `agibot/task_6030`。如果目录名和 asset id 不一致，使用 `--asset-id` 显式覆盖。加载器会在构造 LeRobot 对象之前检查 `<root>/meta/info.json`。由于 G01 数据配置将数据集标记为仅本地，未提供根目录时会直接失败，而不会尝试从 Hub 获取默认 repo id。
 
 当 `num_train_steps=30000` 时，训练循环的 step index 为 `0..29999`，因此最后强制保存的检查点是 `29999`。默认 `keep_period=5000` 时，保留的周期检查点目录可能包括 `25000` 等步骤。
 
@@ -78,7 +84,8 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/g01_task_5093/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/g01_task_6030/29999 \
+  --policy.asset-id agibot/task_6030 \
   --port 8000
 ```
 
