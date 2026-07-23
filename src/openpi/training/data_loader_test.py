@@ -86,6 +86,7 @@ def test_with_real_dataset():
         assert actions.shape == (config.batch_size, config.model.action_horizon, config.model.action_dim)
 
 
+# ==================== AgiBot G01 π0.5 adaptation: local LeRobot root tests BEGIN ====================
 def test_local_dataset_root_is_forwarded(tmp_path):
     dataset_root = tmp_path / "task_5093"
     (dataset_root / "meta").mkdir(parents=True)
@@ -127,3 +128,33 @@ def test_required_local_dataset_root_cannot_fall_back_to_hub():
     ):
         _data_loader.create_torch_dataset(data_config, 16, pi0_config.Pi0Config(action_horizon=16))
     meta_cls.assert_not_called()
+
+
+def test_episode_exclusion_is_forwarded_to_lerobot(tmp_path):
+    dataset_root = tmp_path / "task_5867_479"
+    (dataset_root / "meta").mkdir(parents=True)
+    (dataset_root / "meta" / "info.json").write_text("{}")
+    (dataset_root / "meta" / "episodes.jsonl").write_text(
+        '{"episode_index": 0, "length": 10}\n'
+        '{"episode_index": 1, "length": 10}\n'
+    )
+    exclusion_file = tmp_path / "exclude_g01.txt"
+    exclusion_file.write_text(
+        "agibot/task_5867_479\t1\tdata/chunk-000/episode_000001.parquet\tcontrol jump\n"
+    )
+    data_config = _config.DataConfig(
+        repo_id="agibot/task_5867_479",
+        dataset_root=str(dataset_root),
+        exclude_file=str(exclusion_file),
+        action_sequence_keys=("action",),
+    )
+    metadata = mock.Mock(fps=30, tasks={0: "open the cabinet"})
+
+    with (
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata", return_value=metadata),
+        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDataset", return_value=mock.Mock()) as dataset_cls,
+    ):
+        _data_loader.create_torch_dataset(data_config, 16, pi0_config.Pi0Config(action_horizon=16))
+
+    assert dataset_cls.call_args.kwargs["episodes"] == [0]
+# ==================== AgiBot G01 π0.5 adaptation: local LeRobot root tests END ====================

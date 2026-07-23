@@ -16,6 +16,45 @@ ROS2 客户端默认执行: 前 8 步，也就是 --execute-horizon 8
 
 不要单独修改 `--action-horizon`。如果确实要改 action chunk，需要同时修改模型配置、归一化统计、训练数据 chunk 构造和 ROS2 推理端执行逻辑。
 
+## 每次训练前的数据检查
+
+`scripts/agibot_g01_data_quality.py` 会统一检查 Parquet 结构、state/action 数值、时间戳连续性、动作突跳，以及三路视频能否完整解码。脚本不会修改原始 Parquet 或视频，只会输出质量报告、自动排除清单和人工复核清单。
+
+单数据集检查示例：
+
+```bash
+uv run scripts/agibot_g01_data_quality.py \
+  --dataset agibot/task_5867_479=dataset/task_5867_479 \
+  --video-check decode \
+  --output-dir reports/g01_preflight/task_5867_479
+```
+
+多数据集可以重复传入 `--dataset`，并生成一份共享排除清单：
+
+```bash
+uv run scripts/agibot_g01_data_quality.py \
+  --dataset agibot/task_5867_203=dataset/task_5867_203 \
+  --dataset agibot/task_5867_479=dataset/task_5867_479 \
+  --video-check decode \
+  --output-dir reports/g01_preflight/task_5867_all
+```
+
+输出目录中最重要的文件是：
+
+```text
+data_quality_report.md    中文汇总报告
+episode_metrics.csv      每个 episode 的详细指标
+exclude_g01.txt          确认应排除的 episode，统计和训练直接读取
+review_g01.txt           阈值附近的可疑 episode，需人工复核后再决定
+thresholds.json          本次检查采用的阈值
+```
+
+默认的 `decode` 模式会实际解码每个视频，因此耗时较长，但适合正式训练前检查。调试规则时可用 `--video-check metadata` 只检查视频元数据；`--video-check content` 还会检测相邻帧内容重复，耗时最长。
+
+检查完成后先打开 `data_quality_report.md`，人工确认 `review_g01.txt`。默认只有达到硬阈值的 episode 会进入 `exclude_g01.txt`；如要临时把全部待复核项也排除，可在扫描时添加 `--exclude-review`。不建议在没有查看报告的情况下使用该参数。
+
+后续计算归一化统计和训练必须使用同一份 `exclude_g01.txt`，否则两阶段看到的数据分布不一致。
+
 ## 单任务训练
 
 在受支持的 Linux/NVIDIA 机器上安装 openpi。建议先为每个任务定义独立的 dataset root、asset id 和实验名：
@@ -31,7 +70,8 @@ EXP_NAME=g01_$TASK_ID
 
 ```bash
 uv run scripts/compute_agibot_g01_norm_stats_fast.py \
-  --dataset-root $DATASET_ROOT
+  --dataset-root $DATASET_ROOT \
+  --exclude-file reports/g01_preflight/$TASK_ID/exclude_g01.txt
 ```
 
 默认会从 `DATASET_ROOT` 的目录名推断 asset id。比如 `./dataset/task_6030` 会写到：
@@ -54,6 +94,7 @@ uv run scripts/compute_agibot_g01_norm_stats_fast.py \
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
   --data.repo-id $ASSET_ID \
   --data.dataset-root $DATASET_ROOT \
+  --data.exclude-file reports/g01_preflight/$TASK_ID/exclude_g01.txt \
   --exp-name $EXP_NAME \
   --overwrite
 ```
@@ -92,6 +133,7 @@ uv run scripts/agibot_g01_multi_train.py compute-norm \
   --dataset agibot/task_5093=$TASK_5093 \
   --dataset agibot/task_6030=$TASK_6030 \
   --dataset agibot/task_7001=$TASK_7001 \
+  --exclude-file reports/g01_preflight/g01_mix/exclude_g01.txt \
   --asset-id $ASSET_ID
 ```
 
@@ -102,6 +144,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/agibot_g01_multi_train.py trai
   --dataset agibot/task_5093=$TASK_5093 \
   --dataset agibot/task_6030=$TASK_6030 \
   --dataset agibot/task_7001=$TASK_7001 \
+  --exclude-file reports/g01_preflight/g01_mix/exclude_g01.txt \
   --asset-id $ASSET_ID \
   --exp-name $EXP_NAME \
   --batch-size 64 \

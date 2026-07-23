@@ -37,17 +37,17 @@ import logging
 import pathlib
 import types
 
+import compute_agibot_g01_norm_stats_fast as _fast_stats
 import jax
 import numpy as np
 import torch
 import tqdm
 
-import compute_agibot_g01_norm_stats_fast as _fast_stats
 import openpi.shared.normalize as _normalize
 import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
+import openpi.training.episode_filter as _episode_filter
 import openpi.transforms as _transforms
-
 
 DEFAULT_CONFIG_NAME = "pi05_agibot_g01"
 
@@ -140,6 +140,7 @@ def _config_with_mixed_asset(args: argparse.Namespace) -> _config.TrainConfig:
         # source repo ids are preserved per DatasetSpec and passed to LeRobot.
         repo_id=args.asset_id,
         dataset_root=None,
+        exclude_file=None,
         assets=assets,
     )
 
@@ -157,6 +158,7 @@ def _config_with_mixed_asset(args: argparse.Namespace) -> _config.TrainConfig:
                 }
             ),
             "action_horizon": model.action_horizon,
+            "exclude_file": None if args.exclude_file is None else str(args.exclude_file),
         }
     )
 
@@ -193,15 +195,24 @@ def _create_single_prompted_dataset(
     spec: DatasetSpec,
     *,
     action_horizon: int,
+    exclusion_file: pathlib.Path | None,
 ):
     metadata = _data_loader.lerobot_dataset.LeRobotDatasetMetadata(spec.repo_id, root=str(spec.root))
-    dataset = _data_loader.lerobot_dataset.LeRobotDataset(
-        spec.repo_id,
-        root=str(spec.root),
-        delta_timestamps={
+    dataset_kwargs = {
+        "root": str(spec.root),
+        "delta_timestamps": {
             key: [t / metadata.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
-    )
+    }
+    if exclusion_file is not None:
+        included_episodes, exclusions = _episode_filter.included_episode_indices(
+            spec.root,
+            repo_id=spec.repo_id,
+            exclusion_file=exclusion_file,
+        )
+        dataset_kwargs["episodes"] = included_episodes
+        logging.info("%s excluded episodes: %s", spec.repo_id, sorted(exclusions))
+    dataset = _data_loader.lerobot_dataset.LeRobotDataset(spec.repo_id, **dataset_kwargs)
     if data_config.prompt_from_task:
         dataset = _data_loader.TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(metadata.tasks)])
     return dataset
@@ -236,6 +247,7 @@ def _create_multi_data_loader(
     *,
     dataset_specs: Sequence[DatasetSpec],
     sampling_weights: Sequence[float] | None,
+    exclusion_file: pathlib.Path | None,
     sharding: jax.sharding.Sharding | None = None,
     shuffle: bool = False,
     num_batches: int | None = None,
@@ -250,7 +262,12 @@ def _create_multi_data_loader(
         )
 
     datasets = [
-        _create_single_prompted_dataset(data_config, spec, action_horizon=config.model.action_horizon)
+        _create_single_prompted_dataset(
+            data_config,
+            spec,
+            action_horizon=config.model.action_horizon,
+            exclusion_file=exclusion_file,
+        )
         for spec in dataset_specs
     ]
     raw_dataset = torch.utils.data.ConcatDataset(datasets)
@@ -306,6 +323,14 @@ def _compute_mixed_norm_stats(args: argparse.Namespace) -> None:
 
     for dataset_spec in args.dataset:
         files = _fast_stats._iter_parquet_files(dataset_spec.root)
+        files, exclusions = _episode_filter.filter_parquet_files(
+            files,
+            repo_id=dataset_spec.repo_id,
+            dataset_root=dataset_spec.root,
+            exclusion_file=args.exclude_file,
+        )
+        if exclusions:
+            print(f"{dataset_spec.repo_id}: excluded episodes={sorted(exclusions)}")
         dataset_processed = 0
         for path in tqdm.tqdm(files, desc=f"Computing stats: {dataset_spec.repo_id}"):
             raw_state, raw_action = _fast_stats._read_episode_arrays(path)
@@ -361,6 +386,7 @@ def _train_mixed(args: argparse.Namespace) -> None:
             train_config,
             dataset_specs=args.dataset,
             sampling_weights=args.resolved_sampling_weights,
+            exclusion_file=args.exclude_file,
             sharding=sharding,
             shuffle=shuffle,
             num_batches=num_batches,
@@ -389,6 +415,12 @@ def _add_shared_dataset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--asset-id", required=True, help="Mixed asset id used under assets/<config-name>/.")
     parser.add_argument("--config-name", default=DEFAULT_CONFIG_NAME)
     parser.add_argument("--action-horizon", type=int, default=None, help="Defaults to the selected config value.")
+    parser.add_argument(
+        "--exclude-file",
+        type=pathlib.Path,
+        default=None,
+        help="Episode list emitted by scripts/agibot_g01_data_quality.py.",
+    )
 
 
 def _add_sampling_args(parser: argparse.ArgumentParser) -> None:

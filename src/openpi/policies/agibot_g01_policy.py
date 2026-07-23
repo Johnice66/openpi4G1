@@ -9,12 +9,15 @@ import numpy as np
 from openpi import transforms
 
 
+# ==================== AgiBot G01 π0.5 adaptation: dimensions and action mask BEGIN ====================
 RAW_STATE_DIM: Final = 163
 RAW_ACTION_DIM: Final = 36
 POLICY_DIM: Final = 16
 JOINT_ACTION_MASK: Final = transforms.make_bool_mask(14, -2)
+# ==================== AgiBot G01 π0.5 adaptation: dimensions and action mask END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: inference smoke example BEGIN ====================
 def make_agibot_g01_example() -> dict:
     """Create an inference-format observation for smoke tests."""
     return {
@@ -26,8 +29,10 @@ def make_agibot_g01_example() -> dict:
         "state": np.zeros(POLICY_DIM, dtype=np.float32),
         "prompt": "Fixed-point Non-generalized Door Opening",
     }
+# ==================== AgiBot G01 π0.5 adaptation: inference smoke example END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: image/state/action helpers BEGIN ====================
 def _convert_image(image: np.ndarray) -> np.ndarray:
     image = np.asarray(image)
     if image.ndim != 3:
@@ -72,8 +77,10 @@ def _select_actions(actions: np.ndarray) -> np.ndarray:
     if not np.all(np.isfinite(selected)):
         raise ValueError("Actions contain NaN or Inf")
     return selected
+# ==================== AgiBot G01 π0.5 adaptation: image/state/action helpers END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: input transform BEGIN ====================
 @dataclasses.dataclass(frozen=True)
 class AgiBotG01Inputs(transforms.DataTransformFn):
     """Convert raw LeRobot or ROS-client data into the common openpi format."""
@@ -103,8 +110,10 @@ class AgiBotG01Inputs(transforms.DataTransformFn):
         if "prompt" in data:
             result["prompt"] = data["prompt"]
         return result
+# ==================== AgiBot G01 π0.5 adaptation: input transform END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: output transform BEGIN ====================
 @dataclasses.dataclass(frozen=True)
 class AgiBotG01Outputs(transforms.DataTransformFn):
     """Remove model padding and expose absolute G01 actions."""
@@ -116,3 +125,4 @@ class AgiBotG01Outputs(transforms.DataTransformFn):
         if not np.all(np.isfinite(actions)):
             raise ValueError("Model actions contain NaN or Inf")
         return {"actions": actions}
+# ==================== AgiBot G01 π0.5 adaptation: output transform END ====================

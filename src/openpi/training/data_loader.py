@@ -15,6 +15,7 @@ import torch
 import openpi.models.model as _model
 import openpi.training.config as _config
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
+import openpi.training.episode_filter as _episode_filter
 import openpi.transforms as _transforms
 
 T_co = TypeVar("T_co", covariant=True)
@@ -137,6 +138,8 @@ def create_torch_dataset(
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
+    # ==================== AgiBot G01 π0.5 adaptation: local dataset guard BEGIN ====================
+    # G01 uses a private/local LeRobot export. Fail before LeRobot can fall back to remote resolution.
     if data_config.local_dataset_only and data_config.dataset_root is None:
         raise ValueError(f"Dataset {repo_id!r} requires an explicit local dataset root")
     if data_config.dataset_root is not None:
@@ -145,15 +148,34 @@ def create_torch_dataset(
             raise FileNotFoundError(
                 f"Local LeRobot dataset root does not contain meta/info.json: {dataset_root}"
             )
+    if data_config.exclude_file is not None and data_config.dataset_root is None:
+        raise ValueError("Episode exclusion requires an explicit local dataset root")
+    # ==================== AgiBot G01 π0.5 adaptation: local dataset guard END ====================
 
+    # ==================== AgiBot G01 π0.5 adaptation: pass explicit LeRobot root BEGIN ====================
+    # Metadata and dataset must receive the same root so FPS/task metadata and video frames come from local disk.
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id, root=data_config.dataset_root)
-    dataset = lerobot_dataset.LeRobotDataset(
-        data_config.repo_id,
-        root=data_config.dataset_root,
-        delta_timestamps={
+    dataset_kwargs = {
+        "root": data_config.dataset_root,
+        "delta_timestamps": {
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
-    )
+    }
+    if data_config.exclude_file is not None:
+        included_episodes, exclusions = _episode_filter.included_episode_indices(
+            data_config.dataset_root,
+            repo_id=repo_id,
+            exclusion_file=data_config.exclude_file,
+        )
+        dataset_kwargs["episodes"] = included_episodes
+        logging.info(
+            "Applied episode exclusion file %s: kept=%d excluded=%s",
+            data_config.exclude_file,
+            len(included_episodes),
+            sorted(exclusions),
+        )
+    dataset = lerobot_dataset.LeRobotDataset(data_config.repo_id, **dataset_kwargs)
+    # ==================== AgiBot G01 π0.5 adaptation: pass explicit LeRobot root END ====================
 
     if data_config.prompt_from_task:
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])

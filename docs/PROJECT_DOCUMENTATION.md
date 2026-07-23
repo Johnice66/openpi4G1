@@ -27,6 +27,7 @@ flowchart LR
 | [数据与训练](modules/data-and-training.md) | 数据集构造、变换、归一化、优化、分片和检查点 |
 | [推理与部署](modules/inference-and-deployment.md) | 策略构造、预处理、传输、客户端和运行时边界 |
 | [AgiBot G01 实现](implementation/agibot-g01.md) | 精确的数据切片、π0.5 配置、ROS2 协议和安全行为 |
+| [AgiBot G01 迁移指南](implementation/agibot-g01-pi05-migration-guide.md) | 从官方 openpi 逐步改到当前 G01 π0.5 适配的文件级指引 |
 | [π0.5 流匹配原理](principles/pi05-flow-matching.md) | 训练目标、采样过程和 π0.5 专用条件输入 |
 | [近期变更](CHANGELOG_RECENT.md) | 经整理的已提交历史，以及明确标注为未提交的 G01 适配 |
 
@@ -67,3 +68,4 @@ flowchart LR
 3. [π0.5 流匹配原理](principles/pi05-flow-matching.md)
 4. [推理与部署](modules/inference-and-deployment.md)
 5. [AgiBot G01 实现](implementation/agibot-g01.md)
+6. [AgiBot G01 迁移指南](implementation/agibot-g01-pi05-migration-guide.md)

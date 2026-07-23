@@ -4,6 +4,7 @@ import pytest
 from examples.agibot_g01 import control_utils
 
 
+# ==================== AgiBot G01 π0.5 adaptation: client safety tests BEGIN ====================
 def test_parse_and_resample_action_chunk():
     actions = np.arange(16 * 16, dtype=np.float32).reshape(16, 16)
     parsed = control_utils.parse_action_chunk({"actions": actions})
@@ -37,3 +38,4 @@ def test_joint_limiter_restricts_acceleration_and_speed():
     second = limiter(np.array([10.0], dtype=np.float32))
     np.testing.assert_allclose(first, [0.01])
     np.testing.assert_allclose(second, [0.03])
+# ==================== AgiBot G01 π0.5 adaptation: client safety tests END ====================

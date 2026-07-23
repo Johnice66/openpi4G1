@@ -34,7 +34,7 @@ import polars as pl
 import tqdm
 
 import openpi.shared.normalize as normalize
-
+import openpi.training.episode_filter as _episode_filter
 
 RAW_STATE_DIM = 163
 RAW_ACTION_DIM = 36
@@ -193,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional deterministic prefix subset for quick checks.",
     )
+    parser.add_argument(
+        "--exclude-file",
+        type=pathlib.Path,
+        default=None,
+        help="Episode list emitted by scripts/agibot_g01_data_quality.py.",
+    )
     return parser
 
 
@@ -204,6 +210,14 @@ def main() -> None:
     dataset_root = args.dataset_root.expanduser().resolve()
     asset_id = args.asset_id or _infer_asset_id(dataset_root)
     files = _iter_parquet_files(dataset_root)
+    files, exclusions = _episode_filter.filter_parquet_files(
+        files,
+        repo_id=asset_id,
+        dataset_root=dataset_root,
+        exclusion_file=args.exclude_file,
+    )
+    if exclusions:
+        print(f"Excluded episodes: {sorted(exclusions)}")
     stats, processed = _update_stats_from_files(
         files,
         action_horizon=args.action_horizon,

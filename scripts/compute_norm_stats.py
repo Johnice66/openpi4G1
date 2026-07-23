@@ -89,12 +89,27 @@ def create_rlds_dataloader(
     return data_loader, num_batches
 
 
-def main(config_name: str, dataset_root: pathlib.Path | None = None, max_frames: int | None = None):
+def main(
+    config_name: str,
+    dataset_root: pathlib.Path | None = None,
+    exclude_file: pathlib.Path | None = None,
+    max_frames: int | None = None,
+):
     config = _config.get_config(config_name)
+    # ==================== AgiBot G01 π0.5 adaptation: local stats root BEGIN ====================
+    # Norm stats must be computed from the transformed local task_5093 state/action, not raw Hub data.
     if dataset_root is not None:
-        config = dataclasses.replace(config, data=dataclasses.replace(config.data, dataset_root=str(dataset_root)))
+        config = dataclasses.replace(
+            config,
+            data=dataclasses.replace(
+                config.data,
+                dataset_root=str(dataset_root),
+                exclude_file=None if exclude_file is None else str(exclude_file),
+            ),
+        )
     elif isinstance(config.data, _config.LeRobotAgiBotG01DataConfig):
         raise ValueError("pi05_agibot_g01 requires --dataset-root pointing to the task_5093 directory")
+    # ==================== AgiBot G01 π0.5 adaptation: local stats root END ====================
     data_config = config.data.create(config.assets_dirs, config.model)
 
     if data_config.rlds_data_dir is not None:

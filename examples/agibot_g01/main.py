@@ -29,6 +29,7 @@ except ImportError as exc:  # pragma: no cover - only available in the robot ROS
     raise ImportError("genie_msgs is required to read AgiBot gripper state") from exc
 
 
+# ==================== AgiBot G01 π0.5 adaptation: ROS client configuration BEGIN ====================
 @dataclass(frozen=True)
 class ClientConfig:
     policy_host: str = "127.0.0.1"
@@ -74,8 +75,10 @@ class ClientConfig:
     left_gripper_joint_name: str = "left_gripper_joint1"
     right_gripper_joint_name: str = "right_gripper_joint1"
     qos_depth: int = 1
+# ==================== AgiBot G01 π0.5 adaptation: ROS client configuration END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: CLI parsing and safety defaults BEGIN ====================
 def build_parser() -> argparse.ArgumentParser:
     defaults = ClientConfig()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -154,14 +157,18 @@ def parse_config() -> ClientConfig:
     if config.right_gripper_min > config.right_gripper_max:
         raise ValueError("right gripper min must be <= max")
     return config
+# ==================== AgiBot G01 π0.5 adaptation: CLI parsing and safety defaults END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: sensor decoding helpers BEGIN ====================
 def _read_end_position(message: EndState) -> float:
     if not message.end_state:
         raise ValueError("EndState.end_state is empty")
     return float(message.end_state[0].position)
+# ==================== AgiBot G01 π0.5 adaptation: sensor decoding helpers END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: ROS subscriptions and publishers BEGIN ====================
 class AgiBotG01Node(Node):
     def __init__(self, config: ClientConfig):
         super().__init__("openpi_agibot_g01_client")
@@ -288,8 +295,10 @@ class AgiBotG01Node(Node):
         command.name = [joint_name]
         command.position = [float(position)]
         publisher.publish(command)
+# ==================== AgiBot G01 π0.5 adaptation: ROS subscriptions and publishers END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: action execution safety pipeline BEGIN ====================
 def _scale_gripper(value: float, *, scale: float, offset: float, minimum: float, maximum: float) -> float:
     return float(np.clip(value * scale + offset, minimum, maximum))
 
@@ -354,8 +363,10 @@ def execute_chunk(
         node.get_logger().warning(
             f"Final joint tracking error {error:.4f} rad exceeds tolerance {config.pos_tolerance:.4f} rad"
         )
+# ==================== AgiBot G01 π0.5 adaptation: action execution safety pipeline END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: WebSocket-to-ROS runtime loop BEGIN ====================
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     config = parse_config()
@@ -416,3 +427,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+# ==================== AgiBot G01 π0.5 adaptation: WebSocket-to-ROS runtime loop END ====================

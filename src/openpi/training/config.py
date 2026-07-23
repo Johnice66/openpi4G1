@@ -17,7 +17,9 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
+# ==================== AgiBot G01 π0.5 adaptation: policy transforms BEGIN ====================
 import openpi.policies.agibot_g01_policy as agibot_g01_policy
+# ==================== AgiBot G01 π0.5 adaptation: policy transforms END ====================
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -66,10 +68,14 @@ class AssetsConfig:
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
+    # ==================== AgiBot G01 π0.5 adaptation: explicit local LeRobot root BEGIN ====================
     # Optional local LeRobot dataset root. When set, no Hub download is needed.
     dataset_root: str | None = None
     # If true, the data loader refuses to fall back to downloading this dataset.
     local_dataset_only: bool = False
+    # Optional preflight output. Matching episodes are omitted without modifying the source dataset.
+    exclude_file: str | None = None
+    # ==================== AgiBot G01 π0.5 adaptation: explicit local LeRobot root END ====================
     # Directory within the assets directory containing the data assets.
     asset_id: str | None = None
     # Contains precomputed normalization stats. If None, normalization will not be performed.
@@ -172,8 +178,12 @@ class ModelTransformFactory(GroupFactory):
 class DataConfigFactory(abc.ABC):
     # The LeRobot repo id.
     repo_id: str = tyro.MISSING
+    # ==================== AgiBot G01 π0.5 adaptation: CLI-overridable dataset root BEGIN ====================
     # Optional local LeRobot dataset root. This remains a regular CLI-overridable field.
     dataset_root: str | None = None
+    # Optional episode list emitted by scripts/agibot_g01_data_quality.py.
+    exclude_file: str | None = None
+    # ==================== AgiBot G01 π0.5 adaptation: CLI-overridable dataset root END ====================
     # Determines how the assets will be loaded.
     assets: AssetsConfig = dataclasses.field(default_factory=AssetsConfig)
     # Base config that will be updated by the factory.
@@ -189,7 +199,9 @@ class DataConfigFactory(abc.ABC):
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
+            # AgiBot G01 π0.5 adaptation: forward --data.dataset-root into the final DataConfig.
             dataset_root=self.dataset_root,
+            exclude_file=self.exclude_file,
             asset_id=asset_id,
             norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), asset_id),
             use_quantile_norm=model_config.model_type != ModelType.PI0,
@@ -285,7 +297,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
         )
 
-
+# ==================== AgiBot G01 π0.5 adaptation: LeRobot task_5093 factory BEGIN ====================
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgiBotG01DataConfig(DataConfigFactory):
     """Data pipeline for the AgiBot G01 Genie Studio a2d dataset."""
@@ -326,6 +338,7 @@ class LeRobotAgiBotG01DataConfig(DataConfigFactory):
         )
 
 
+# ==================== AgiBot G01 π0.5 adaptation: LeRobot task_5093 factory END ====================
 @dataclasses.dataclass(frozen=True)
 class LeRobotLiberoDataConfig(DataConfigFactory):
     """
@@ -876,6 +889,7 @@ _CONFIGS = [
     #
     # Fine-tuning AgiBot G01 config.
     #
+    # ==================== AgiBot G01 π0.5 adaptation: registered train config BEGIN ====================
     TrainConfig(
         name="pi05_agibot_g01",
         model=pi0_config.Pi0Config(pi05=True, action_dim=32, action_horizon=16),
@@ -894,6 +908,7 @@ _CONFIGS = [
             "action_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
         },
     ),
+    # ==================== AgiBot G01 π0.5 adaptation: registered train config END ====================
     #
     # Fine-tuning DROID configs.
     #

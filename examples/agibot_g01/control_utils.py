@@ -8,6 +8,7 @@ import numpy as np
 POLICY_ACTION_DIM = 16
 
 
+# ==================== AgiBot G01 π0.5 adaptation: metadata/action validation BEGIN ====================
 def validate_server_metadata(metadata: Mapping, *, expected_horizon: int = 16, expected_fps: int = 30) -> None:
     expected = {
         "robot_type": "agibot_g01",
@@ -31,8 +32,10 @@ def parse_action_chunk(response: Mapping) -> np.ndarray:
     if not np.all(np.isfinite(actions)):
         raise ValueError("Policy actions contain NaN or Inf")
     return actions
+# ==================== AgiBot G01 π0.5 adaptation: metadata/action validation END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: action chunk resampling BEGIN ====================
 def resample_sequence(sequence: np.ndarray, *, source_hz: float, target_hz: float) -> np.ndarray:
     sequence = np.asarray(sequence, dtype=np.float32)
     if sequence.ndim != 2 or sequence.shape[0] == 0:
@@ -61,8 +64,10 @@ def prepare_execution_chunk(
     actions = parse_action_chunk({"actions": actions})
     prefix = actions.shape[0] if execute_horizon <= 0 else min(execute_horizon, actions.shape[0])
     return resample_sequence(actions[:prefix], source_hz=model_fps, target_hz=control_hz)
+# ==================== AgiBot G01 π0.5 adaptation: action chunk resampling END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: smoothing and safety limiting BEGIN ====================
 class EMAFilter:
     def __init__(self, dim: int, alpha: float):
         if not 0 < alpha <= 1:
@@ -127,3 +132,4 @@ def blend_target(current: np.ndarray, target: np.ndarray, step: int, blend_steps
         return np.asarray(target, dtype=np.float32)
     alpha = min(1.0, float(step + 1) / float(blend_steps))
     return (np.asarray(current) * (1.0 - alpha) + np.asarray(target) * alpha).astype(np.float32)
+# ==================== AgiBot G01 π0.5 adaptation: smoothing and safety limiting END ====================

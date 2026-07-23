@@ -10,6 +10,7 @@ from openpi.training import config as training_config
 from openpi.training import data_loader
 
 
+# ==================== AgiBot G01 π0.5 adaptation: transform unit tests BEGIN ====================
 def test_raw_dataset_slices_and_images():
     state = np.arange(agibot_g01_policy.RAW_STATE_DIM, dtype=np.float32)
     actions = np.arange(2 * agibot_g01_policy.RAW_ACTION_DIM, dtype=np.float32).reshape(2, -1)
@@ -64,8 +65,10 @@ def test_invalid_state_rejected(value, message):
     example["state"] = value
     with pytest.raises(ValueError, match=message):
         agibot_g01_policy.AgiBotG01Inputs()(example)
+# ==================== AgiBot G01 π0.5 adaptation: transform unit tests END ====================
 
 
+# ==================== AgiBot G01 π0.5 adaptation: real dataset smoke test BEGIN ====================
 @pytest.mark.manual
 def test_real_task_5093_sample():
     dataset_root = os.environ.get("OPENPI_G01_TEST_DATASET_ROOT")
@@ -89,3 +92,4 @@ def test_real_task_5093_sample():
     assert sample["actions"].shape == (16, 16)
     assert set(sample["image"]) == {"base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"}
     assert str(sample["prompt"]) == "Fixed-point Non-generalized Door Opening"
+# ==================== AgiBot G01 π0.5 adaptation: real dataset smoke test END ====================
