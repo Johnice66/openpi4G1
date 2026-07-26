@@ -212,7 +212,7 @@ def _create_single_prompted_dataset(
         )
         dataset_kwargs["episodes"] = included_episodes
         logging.info("%s excluded episodes: %s", spec.repo_id, sorted(exclusions))
-    dataset = _data_loader.lerobot_dataset.LeRobotDataset(spec.repo_id, **dataset_kwargs)
+    dataset = _data_loader.EpisodeFilteredLeRobotDataset(spec.repo_id, **dataset_kwargs)
     if data_config.prompt_from_task:
         dataset = _data_loader.TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(metadata.tasks)])
     return dataset

@@ -3,6 +3,7 @@ from unittest import mock
 
 import jax
 import pytest
+import torch
 
 from openpi.models import pi0_config
 from openpi.training import config as _config
@@ -101,7 +102,7 @@ def test_local_dataset_root_is_forwarded(tmp_path):
 
     with (
         mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata", return_value=metadata) as meta_cls,
-        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDataset", return_value=mock.Mock()) as dataset_cls,
+        mock.patch.object(_data_loader, "EpisodeFilteredLeRobotDataset", return_value=mock.Mock()) as dataset_cls,
     ):
         _data_loader.create_torch_dataset(data_config, 16, model_config)
 
@@ -152,9 +153,24 @@ def test_episode_exclusion_is_forwarded_to_lerobot(tmp_path):
 
     with (
         mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDatasetMetadata", return_value=metadata),
-        mock.patch.object(_data_loader.lerobot_dataset, "LeRobotDataset", return_value=mock.Mock()) as dataset_cls,
+        mock.patch.object(_data_loader, "EpisodeFilteredLeRobotDataset", return_value=mock.Mock()) as dataset_cls,
     ):
         _data_loader.create_torch_dataset(data_config, 16, pi0_config.Pi0Config(action_horizon=16))
 
     assert dataset_cls.call_args.kwargs["episodes"] == [0]
+
+
+def test_filtered_lerobot_dataset_remaps_original_episode_index():
+    dataset = object.__new__(_data_loader.EpisodeFilteredLeRobotDataset)
+    dataset._episode_positions = {0: 0, 2: 1}
+    dataset.episode_data_index = {
+        "from": torch.tensor([0, 10]),
+        "to": torch.tensor([10, 20]),
+    }
+    dataset.delta_indices = {"action": [0, 1]}
+
+    query_indices, padding = dataset._get_query_indices(idx=10, ep_idx=2)
+
+    assert query_indices == {"action": [10, 11]}
+    assert padding["action_is_pad"].tolist() == [False, False]
 # ==================== AgiBot G01 π0.5 adaptation: local LeRobot root tests END ====================

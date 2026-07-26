@@ -52,6 +52,19 @@ class DataLoader(Protocol[T_co]):
         raise NotImplementedError("Subclasses of DataLoader should implement __iter__.")
 
 
+class EpisodeFilteredLeRobotDataset(lerobot_dataset.LeRobotDataset):
+    """Keep original episode ids while indexing LeRobot's compact filtered ranges."""
+
+    def __init__(self, *args, episodes: list[int] | None = None, **kwargs):
+        self._episode_positions = None if episodes is None else {episode: i for i, episode in enumerate(episodes)}
+        super().__init__(*args, episodes=episodes, **kwargs)
+
+    def _get_query_indices(self, idx: int, ep_idx: int):
+        if self._episode_positions is not None:
+            ep_idx = self._episode_positions[ep_idx]
+        return super()._get_query_indices(idx, ep_idx)
+
+
 class TransformedDataset(Dataset[T_co]):
     def __init__(self, dataset: Dataset, transforms: Sequence[_transforms.DataTransformFn]):
         self._dataset = dataset
@@ -174,7 +187,7 @@ def create_torch_dataset(
             len(included_episodes),
             sorted(exclusions),
         )
-    dataset = lerobot_dataset.LeRobotDataset(data_config.repo_id, **dataset_kwargs)
+    dataset = EpisodeFilteredLeRobotDataset(data_config.repo_id, **dataset_kwargs)
     # ==================== AgiBot G01 π0.5 adaptation: pass explicit LeRobot root END ====================
 
     if data_config.prompt_from_task:
