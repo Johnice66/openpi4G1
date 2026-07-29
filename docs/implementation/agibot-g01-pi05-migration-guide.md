@@ -10,7 +10,7 @@
 
 - 使用 `pi05_agibot_g01` 配置从 `gs://openpi-assets/checkpoints/pi05_base/params` 初始化 π0.5 base 并执行 JAX 全参数微调。
 - 显式从本地 LeRobot v2.1 `task_5093` 目录读取数据，不修改原始数据，也不回退到 Hugging Face Hub 下载。
-- 将原始三路 RGB、163 维 state、36 维 action 和整任务语言转换为模型需要的三路图像、16 维 state、16 帧 action chunk。
+- 将原始三路 RGB、163 维 state、36 维 action 和整任务语言转换为模型需要的三路图像、16 维 state、32 帧 action chunk。
 - 对前 14 维手臂动作使用相对动作训练，对末 2 维夹爪保持绝对动作。
 - 通过 WebSocket 策略服务器加载检查点，通过 ROS2 客户端发送 observation，并默认禁用真机控制。
 
@@ -136,17 +136,25 @@ class LeRobotAgiBotG01DataConfig(DataConfigFactory):
 ```python
 TrainConfig(
     name="pi05_agibot_g01",
-    model=pi0_config.Pi0Config(pi05=True, action_dim=32, action_horizon=16),
+    model=pi0_config.Pi0Config(pi05=True, action_dim=32, action_horizon=32),
     data=LeRobotAgiBotG01DataConfig(
         repo_id="agibot/task_5093",
         base_config=DataConfig(prompt_from_task=True),
     ),
     weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
-    num_train_steps=30_000,
+    lr_schedule=_optimizer.CosineDecaySchedule(
+        warmup_steps=1_000,
+        peak_lr=2.5e-5,
+        decay_steps=100_000,
+        decay_lr=2.5e-6,
+    ),
+    batch_size=64,
+    num_train_steps=100_000,
+    fsdp_devices=2,
     policy_metadata={
         "robot_type": "agibot_g01",
         "dataset_fps": 30,
-        "action_horizon": 16,
+        "action_horizon": 32,
         "policy_action_dim": 16,
         "state_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
         "action_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
@@ -158,7 +166,7 @@ TrainConfig(
 
 - `pi05=True` 让模型类型走 π0.5 路径。
 - `action_dim=32` 是模型维度，实际 G01 action 维度是 16，后续通过 `PadStatesAndActions` 填充。
-- `action_horizon=16` 对应 16 帧 action chunk。
+- `action_horizon=32` 对应 32 帧 action chunk。
 - 未设置 `freeze_filter`，因此是 JAX 全参数微调。
 - `prompt_from_task=True` 使用 LeRobot episode 的整任务语言，而不是 `sub_tasks`。
 - `policy_metadata` 供 ROS2 客户端启动时校验服务端是否加载了正确策略。
@@ -348,7 +356,7 @@ response = self._ws.recv(timeout=self._receive_timeout)
 
 核心职责：
 
-- `validate_server_metadata`：要求 `robot_type=agibot_g01`、`action_horizon=16`、`policy_action_dim=16`、`dataset_fps=30`。
+- `validate_server_metadata`：要求 `robot_type=agibot_g01`、`action_horizon=32`、`policy_action_dim=16`、`dataset_fps=30`。
 - `parse_action_chunk`：要求返回字典包含 `actions`，shape 为 `(T, 16)`，非空且 finite。
 - `resample_sequence`：把 30 Hz 动作序列线性重采样到 60 Hz。
 - `prepare_execution_chunk`：默认取前 `execute_horizon=8` 步，再重采样。
@@ -472,12 +480,12 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
   --overwrite
 ```
 
-启动策略服务。训练 30,000 步时，最后 step 目录通常是 `29999`：
+启动策略服务。训练 100,000 步时，最后 step 目录通常是 `99999`：
 
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/g01_task_5093/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/g01_task_5093/99999 \
   --port 8000
 ```
 
@@ -546,7 +554,7 @@ python examples/agibot_g01/main.py \
 - 用 `action_dim=16` 直接训练 π0.5：会绕开当前实现的 32 维模型 padding 约定，与 `PadStatesAndActions` 和基础权重形状不匹配。
 - 把夹爪也纳入 delta mask：会改变已经确认可直接执行的夹爪 action 单位。
 - 在 ROS2 客户端默认启用 publisher：不符合当前安全边界。
-- 使用 `30000` 作为最终检查点目录：当前训练循环的最后 step index 是 `29999`。
+- 使用 `100000` 作为最终检查点目录：当前训练循环的最后 step index 是 `99999`。
 
 ## 当前环境中已验证与未验证
 

@@ -4,12 +4,12 @@
 
 ## Action chunk 默认值
 
-`pi05_agibot_g01` 默认使用 `Pi0Config(pi05=True, action_dim=32, action_horizon=16)`。对 G01 来说，策略有效 action 是 16 维；模型内部会把 16 维 G01 action padding 到 32 维，推理输出再恢复为 16 维。
+`pi05_agibot_g01` 默认使用 `Pi0Config(pi05=True, action_dim=32, action_horizon=32)`。对 G01 来说，策略有效 action 是 16 维；模型内部会把 16 维 G01 action padding 到 32 维，推理输出再恢复为 16 维。
 
-单任务和多任务训练默认都是 16 步 action chunk：
+单任务和多任务训练默认都是 32 步 action chunk：
 
 ```text
-模型返回 actions shape: (16, 16)
+模型返回 actions shape: (32, 16)
 每步 action 维度: 左臂 7 + 右臂 7 + 左夹爪 1 + 右夹爪 1
 ROS2 客户端默认执行: 前 8 步，也就是 --execute-horizon 8
 ```
@@ -71,7 +71,8 @@ EXP_NAME=g01_$TASK_ID
 ```bash
 uv run scripts/compute_agibot_g01_norm_stats_fast.py \
   --dataset-root $DATASET_ROOT \
-  --exclude-file reports/g01_preflight/$TASK_ID/exclude_g01.txt
+  --exclude-file reports/g01_preflight/$TASK_ID/exclude_g01.txt \
+  --action-horizon 32
 ```
 
 默认会从 `DATASET_ROOT` 的目录名推断 asset id。比如 `./dataset/task_6030` 会写到：
@@ -96,6 +97,9 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
   --data.dataset-root $DATASET_ROOT \
   --data.exclude-file reports/g01_preflight/$TASK_ID/exclude_g01.txt \
   --exp-name $EXP_NAME \
+  --batch-size 64 \
+  --fsdp-devices 2 \
+  --num-train-steps 100000 \
   --overwrite
 ```
 
@@ -107,7 +111,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
 
 模型学习相对关节动作和绝对夹爪动作。策略输出变换会在返回客户端前恢复绝对关节目标。
 
-默认 `num_train_steps=30000` 时，当前训练脚本最终保存的 step 通常是 `29999`，因为训练循环执行 `0..29999`。启动策略服务器时使用实际生成的 checkpoint step 目录。
+默认 `num_train_steps=100000` 时，当前训练脚本最终保存的 step 通常是 `99999`，因为训练循环执行 `0..99999`。启动策略服务器时使用实际生成的 checkpoint step 目录。
 
 ## 多任务训练
 
@@ -193,7 +197,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/agibot_g01_multi_train.py trai
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/$EXP_NAME/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/$EXP_NAME/99999 \
   --policy.asset-id $ASSET_ID \
   --port 8000
 ```

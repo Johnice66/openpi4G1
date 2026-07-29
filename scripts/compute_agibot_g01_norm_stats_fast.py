@@ -14,7 +14,7 @@ by ``LeRobotAgiBotG01DataConfig``:
 
 - state: ``state[28:42] + state[0:2]``
 - action: ``action[16:30] + action[0:2]``
-- action chunk horizon: 16 by default
+- action chunk horizon: 32 by default
 - joint delta: first 14 dimensions
 - gripper absolute: last 2 dimensions
 
@@ -40,7 +40,7 @@ RAW_STATE_DIM = 163
 RAW_ACTION_DIM = 36
 POLICY_DIM = 16
 JOINT_DIMS = 14
-DEFAULT_ACTION_HORIZON = 16
+DEFAULT_ACTION_HORIZON = 32
 STATE_COLUMN = "observation.state"
 ACTION_COLUMN = "action"
 DEFAULT_CONFIG_NAME = "pi05_agibot_g01"

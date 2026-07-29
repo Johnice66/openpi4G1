@@ -392,7 +392,7 @@ def main() -> None:
         )
         metadata = policy.get_server_metadata()
         if not config.skip_metadata_check:
-            control_utils.validate_server_metadata(metadata, expected_horizon=16, expected_fps=int(config.model_fps))
+            control_utils.validate_server_metadata(metadata, expected_horizon=32, expected_fps=int(config.model_fps))
         control_status = "ENABLED" if config.enable_control else "disabled"
         node.get_logger().info(f"Connected to policy server; control={control_status}; metadata={metadata}")
 

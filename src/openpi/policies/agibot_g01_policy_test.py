@@ -65,6 +65,17 @@ def test_invalid_state_rejected(value, message):
     example["state"] = value
     with pytest.raises(ValueError, match=message):
         agibot_g01_policy.AgiBotG01Inputs()(example)
+
+
+def test_training_config_uses_requested_long_horizon_defaults():
+    config = training_config.get_config("pi05_agibot_g01")
+
+    assert config.model.action_horizon == 32
+    assert config.batch_size == 64
+    assert config.num_train_steps == 100_000
+    assert config.fsdp_devices == 2
+    assert config.lr_schedule.decay_steps == 100_000
+    assert config.policy_metadata["action_horizon"] == 32
 # ==================== AgiBot G01 π0.5 adaptation: transform unit tests END ====================
 
 
@@ -89,7 +100,7 @@ def test_real_task_5093_sample():
     sample = transformed[0]
 
     assert sample["state"].shape == (16,)
-    assert sample["actions"].shape == (16, 16)
+    assert sample["actions"].shape == (32, 16)
     assert set(sample["image"]) == {"base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"}
     assert str(sample["prompt"]) == "Fixed-point Non-generalized Door Opening"
 # ==================== AgiBot G01 π0.5 adaptation: real dataset smoke test END ====================

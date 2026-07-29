@@ -9,7 +9,7 @@ POLICY_ACTION_DIM = 16
 
 
 # ==================== AgiBot G01 π0.5 adaptation: metadata/action validation BEGIN ====================
-def validate_server_metadata(metadata: Mapping, *, expected_horizon: int = 16, expected_fps: int = 30) -> None:
+def validate_server_metadata(metadata: Mapping, *, expected_horizon: int = 32, expected_fps: int = 30) -> None:
     expected = {
         "robot_type": "agibot_g01",
         "action_horizon": expected_horizon,

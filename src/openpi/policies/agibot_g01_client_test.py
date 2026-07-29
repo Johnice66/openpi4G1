@@ -6,7 +6,7 @@ from examples.agibot_g01 import control_utils
 
 # ==================== AgiBot G01 π0.5 adaptation: client safety tests BEGIN ====================
 def test_parse_and_resample_action_chunk():
-    actions = np.arange(16 * 16, dtype=np.float32).reshape(16, 16)
+    actions = np.arange(32 * 16, dtype=np.float32).reshape(32, 16)
     parsed = control_utils.parse_action_chunk({"actions": actions})
     execution = control_utils.prepare_execution_chunk(parsed, execute_horizon=8, model_fps=30, control_hz=60)
     assert execution.shape == (16, 16)
@@ -16,13 +16,13 @@ def test_parse_and_resample_action_chunk():
 
 def test_invalid_action_is_rejected():
     with pytest.raises(ValueError, match="NaN"):
-        control_utils.parse_action_chunk({"actions": np.full((16, 16), np.nan)})
+        control_utils.parse_action_chunk({"actions": np.full((32, 16), np.nan)})
     with pytest.raises(ValueError, match="shaped"):
-        control_utils.parse_action_chunk({"actions": np.zeros((16, 15))})
+        control_utils.parse_action_chunk({"actions": np.zeros((32, 15))})
 
 
 def test_server_metadata_validation():
-    metadata = {"robot_type": "agibot_g01", "action_horizon": 16, "policy_action_dim": 16, "dataset_fps": 30}
+    metadata = {"robot_type": "agibot_g01", "action_horizon": 32, "policy_action_dim": 16, "dataset_fps": 30}
     control_utils.validate_server_metadata(metadata)
     metadata["action_horizon"] = 50
     with pytest.raises(ValueError, match="metadata mismatch"):

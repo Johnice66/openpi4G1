@@ -44,12 +44,12 @@ LeRobot 视频帧是 `[0,1]` 范围内的 CHW float 数组；变换会将其转�
 
 `pi05_agibot_g01` 使用：
 
-- `Pi0Config(pi05=True, action_dim=32, action_horizon=16)`；
+- `Pi0Config(pi05=True, action_dim=32, action_horizon=32)`；
 - 未配置冻结过滤器，因此执行全参数微调；
 - 从 `gs://openpi-assets/checkpoints/pi05_base/params` 加载 π0.5 base 参数；
 - 从 LeRobot `task_index` 映射读取任务 prompt；
 - 使用 `create_base_config` 为 π0.5 选择的分位数归一化；
-- 训练 30,000 步，batch/FSDP 沿用通用默认值，除非由命令行覆盖；
+- 训练 100,000 步，全局 batch size 默认为 64，默认通过 `fsdp_devices=2` 在双卡间启用参数分片；
 - 默认使用 `agibot/task_5093` 作为逻辑 repository ID；训练其他任务时应通过 `--data.repo-id` 显式改成对应 `asset_id`，例如 `agibot/task_6030`。
 
 物理策略维度是 16，但 `PadStatesAndActions` 会将 state 和 action 数组填充到模型维度 32。`AgiBotG01Outputs` 在采样后移除这些填充维度。
@@ -66,25 +66,27 @@ DATASET_ROOT=/path/to/$TASK_ID
 ASSET_ID=agibot/$TASK_ID
 
 uv run scripts/compute_agibot_g01_norm_stats_fast.py \
-  --dataset-root $DATASET_ROOT
+  --dataset-root $DATASET_ROOT \
+  --action-horizon 32
 
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_agibot_g01 \
   --data.repo-id $ASSET_ID \
   --data.dataset-root $DATASET_ROOT \
   --exp-name g01_$TASK_ID \
+  --fsdp-devices 2 \
   --overwrite
 ```
 
 快速统计脚本默认从 `DATASET_ROOT` 的目录名推断 asset id，例如 `/path/to/task_6030` 对应 `agibot/task_6030`。如果目录名和 asset id 不一致，使用 `--asset-id` 显式覆盖。加载器会在构造 LeRobot 对象之前检查 `<root>/meta/info.json`。由于 G01 数据配置将数据集标记为仅本地，未提供根目录时会直接失败，而不会尝试从 Hub 获取默认 repo id。
 
-当 `num_train_steps=30000` 时，训练循环的 step index 为 `0..29999`，因此最后强制保存的检查点是 `29999`。默认 `keep_period=5000` 时，保留的周期检查点目录可能包括 `25000` 等步骤。
+当 `num_train_steps=100000` 时，训练循环的 step index 为 `0..99999`，因此最后强制保存的检查点是 `99999`。默认 `keep_period=5000` 时，保留的周期检查点目录可能包括 `95000` 等步骤。
 
 ## 服务与 observation 协议
 
 ```bash
 uv run scripts/serve_policy.py policy:checkpoint \
   --policy.config pi05_agibot_g01 \
-  --policy.dir checkpoints/pi05_agibot_g01/g01_task_6030/29999 \
+  --policy.dir checkpoints/pi05_agibot_g01/g01_task_6030/99999 \
   --policy.asset-id agibot/task_6030 \
   --port 8000
 ```
@@ -99,7 +101,7 @@ state              float32[16]，顺序为左臂关节、右臂关节、左夹�
 prompt             完整任务指令字符串
 ```
 
-除非显式禁用元数据检查，否则客户端要求服务端元数据满足 `robot_type=agibot_g01`、`dataset_fps=30`、`action_horizon=16` 和 `policy_action_dim=16`。
+除非显式禁用元数据检查，否则客户端要求服务端元数据满足 `robot_type=agibot_g01`、`dataset_fps=30`、`action_horizon=32` 和 `policy_action_dim=16`。
 
 ## ROS2 接口
 
