@@ -6,6 +6,7 @@ import pytest
 
 from openpi import transforms
 from openpi.policies import agibot_g01_policy
+from openpi.shared import normalize
 from openpi.training import config as training_config
 from openpi.training import data_loader
 
@@ -76,6 +77,48 @@ def test_training_config_uses_requested_long_horizon_defaults():
     assert config.fsdp_devices == 2
     assert config.lr_schedule.decay_steps == 100_000
     assert config.policy_metadata["action_horizon"] == 32
+
+
+def test_gripper_norm_stats_use_confirmed_physical_ranges():
+    collapsed = {
+        "state": normalize.NormStats(
+            mean=np.zeros(16),
+            std=np.ones(16),
+            q01=np.zeros(16),
+            q99=np.ones(16),
+        ),
+        "actions": normalize.NormStats(
+            mean=np.zeros(16),
+            std=np.ones(16),
+            q01=np.zeros(16),
+            q99=np.ones(16),
+        ),
+    }
+    collapsed["state"].q01[14:16] = 119.99788
+    collapsed["state"].q99[14:16] = 119.99788
+    collapsed["actions"].q01[14:16] = 0.999934
+    collapsed["actions"].q99[14:16] = 0.999934
+
+    fixed = agibot_g01_policy.apply_gripper_physical_norm_ranges(collapsed)
+
+    np.testing.assert_array_equal(fixed["state"].q01[14:16], [0.0, 0.0])
+    np.testing.assert_array_equal(fixed["state"].q99[14:16], [120.0, 120.0])
+    np.testing.assert_array_equal(fixed["actions"].q01[14:16], [0.0, 0.0])
+    np.testing.assert_array_equal(fixed["actions"].q99[14:16], [1.0, 1.0])
+    np.testing.assert_array_equal(collapsed["state"].q01[14:16], [119.99788, 119.99788])
+    np.testing.assert_array_equal(collapsed["actions"].q01[14:16], [0.999934, 0.999934])
+
+    sample = {
+        "state": np.concatenate([np.zeros(14), [0.0, 120.0]]),
+        "actions": np.concatenate([np.zeros((2, 14)), [[0.0, 1.0], [1.0, 0.0]]], axis=-1),
+    }
+    normalized = transforms.Normalize(fixed, use_quantiles=True)(sample)
+    np.testing.assert_allclose(normalized["state"][14:16], [-1.0, 1.0])
+    np.testing.assert_allclose(normalized["actions"][:, 14:16], [[-1.0, 1.0], [1.0, -1.0]])
+
+    restored = transforms.Unnormalize(fixed, use_quantiles=True)(normalized)
+    np.testing.assert_allclose(restored["state"][14:16], [0.0, 120.0], atol=1e-4)
+    np.testing.assert_allclose(restored["actions"][:, 14:16], [[0.0, 1.0], [1.0, 0.0]], atol=1e-5)
 # ==================== AgiBot G01 π0.5 adaptation: transform unit tests END ====================
 
 

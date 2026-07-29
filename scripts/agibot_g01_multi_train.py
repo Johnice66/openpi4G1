@@ -43,6 +43,7 @@ import numpy as np
 import torch
 import tqdm
 
+from openpi.policies import agibot_g01_policy
 import openpi.shared.normalize as _normalize
 import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
@@ -362,6 +363,9 @@ def _compute_mixed_norm_stats(args: argparse.Namespace) -> None:
 
     output_dir = args.output_dir or _default_asset_output_dir(args.config_name, args.asset_id)
     norm_stats = {key: value.get_statistics() for key, value in stats.items()}
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization BEGIN ====================
+    norm_stats = agibot_g01_policy.apply_gripper_physical_norm_ranges(norm_stats)
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization END ====================
     print(f"Total processed frames: {total_processed}")
     print(f"Writing mixed stats to: {output_dir}")
     _normalize.save(output_dir, norm_stats)

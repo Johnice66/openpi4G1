@@ -13,6 +13,7 @@ import tqdm
 import tyro
 
 import openpi.models.model as _model
+from openpi.policies import agibot_g01_policy
 import openpi.shared.normalize as normalize
 import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
@@ -129,6 +130,10 @@ def main(
             stats[key].update(np.asarray(batch[key]))
 
     norm_stats = {key: stats.get_statistics() for key, stats in stats.items()}
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization BEGIN ====================
+    if isinstance(config.data, _config.LeRobotAgiBotG01DataConfig):
+        norm_stats = agibot_g01_policy.apply_gripper_physical_norm_ranges(norm_stats)
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization END ====================
 
     output_path = config.assets_dirs / data_config.repo_id
     print(f"Writing stats to: {output_path}")

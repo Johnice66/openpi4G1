@@ -33,6 +33,7 @@ import numpy as np
 import polars as pl
 import tqdm
 
+from openpi.policies import agibot_g01_policy
 import openpi.shared.normalize as normalize
 import openpi.training.episode_filter as _episode_filter
 
@@ -224,6 +225,9 @@ def main() -> None:
         max_frames=args.max_frames,
     )
     norm_stats = {key: value.get_statistics() for key, value in stats.items()}
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization BEGIN ====================
+    norm_stats = agibot_g01_policy.apply_gripper_physical_norm_ranges(norm_stats)
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization END ====================
 
     output_dir = (
         args.output_dir.expanduser().resolve()

@@ -328,8 +328,15 @@ class LeRobotAgiBotG01DataConfig(DataConfigFactory):
             outputs=[_transforms.AbsoluteActions(agibot_g01_policy.JOINT_ACTION_MASK)],
         )
 
+        base_config = self.create_base_config(assets_dirs, model_config)
+        norm_stats = (
+            None
+            if base_config.norm_stats is None
+            else agibot_g01_policy.apply_gripper_physical_norm_ranges(base_config.norm_stats)
+        )
         return dataclasses.replace(
-            self.create_base_config(assets_dirs, model_config),
+            base_config,
+            norm_stats=norm_stats,
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=ModelTransformFactory()(model_config),

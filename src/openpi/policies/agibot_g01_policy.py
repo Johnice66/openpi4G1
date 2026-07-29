@@ -7,6 +7,7 @@ import einops
 import numpy as np
 
 from openpi import transforms
+from openpi.shared import normalize as _normalize
 
 
 # ==================== AgiBot G01 π0.5 adaptation: dimensions and action mask BEGIN ====================
@@ -15,6 +16,57 @@ RAW_ACTION_DIM: Final = 36
 POLICY_DIM: Final = 16
 JOINT_ACTION_MASK: Final = transforms.make_bool_mask(14, -2)
 # ==================== AgiBot G01 π0.5 adaptation: dimensions and action mask END ====================
+
+
+# ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization BEGIN ====================
+GRIPPER_SLICE: Final = slice(14, 16)
+STATE_GRIPPER_RANGE: Final = (0.0, 120.0)
+ACTION_GRIPPER_RANGE: Final = (0.0, 1.0)
+
+
+def apply_gripper_physical_norm_ranges(
+    norm_stats: dict[str, _normalize.NormStats],
+) -> dict[str, _normalize.NormStats]:
+    """Use the confirmed physical ranges for both G01 grippers.
+
+    The gripper distributions can be highly imbalanced. In that case, their
+    empirical 1st and 99th percentiles may be identical even though rare open
+    or closed commands are valid. Explicit physical ranges preserve those
+    commands and prevent division by an effectively zero quantile range.
+    """
+
+    ranges = {
+        "state": STATE_GRIPPER_RANGE,
+        "actions": ACTION_GRIPPER_RANGE,
+    }
+    result = dict(norm_stats)
+
+    for key, (lower, upper) in ranges.items():
+        if key not in norm_stats:
+            raise KeyError(f"G01 norm stats are missing {key!r}")
+        stats = norm_stats[key]
+        if stats.q01 is None or stats.q99 is None:
+            raise ValueError(f"G01 {key} norm stats are missing q01/q99")
+
+        q01 = np.asarray(stats.q01).copy()
+        q99 = np.asarray(stats.q99).copy()
+        if q01.ndim == 0 or q99.ndim == 0 or q01.shape[-1] < POLICY_DIM or q99.shape[-1] < POLICY_DIM:
+            raise ValueError(
+                f"G01 {key} norm stats must contain at least {POLICY_DIM} dimensions, "
+                f"got q01={q01.shape}, q99={q99.shape}"
+            )
+
+        q01[..., GRIPPER_SLICE] = lower
+        q99[..., GRIPPER_SLICE] = upper
+        result[key] = _normalize.NormStats(
+            mean=np.asarray(stats.mean).copy(),
+            std=np.asarray(stats.std).copy(),
+            q01=q01,
+            q99=q99,
+        )
+
+    return result
+# ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization END ====================
 
 
 # ==================== AgiBot G01 π0.5 adaptation: inference smoke example BEGIN ====================
