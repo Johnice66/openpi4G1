@@ -79,6 +79,24 @@ def test_training_config_uses_requested_long_horizon_defaults():
     assert config.policy_metadata["action_horizon"] == 32
 
 
+# ==================== AgiBot G01 π0.5 adaptation: independent 16-step config test BEGIN ====================
+def test_h16_training_config_is_independent_and_consistent():
+    config = training_config.get_config("pi05_agibot_g01_h16")
+
+    assert config.name == "pi05_agibot_g01_h16"
+    assert config.model.action_dim == 32
+    assert config.model.action_horizon == 16
+    assert config.batch_size == 64
+    assert config.num_train_steps == 100_000
+    assert config.fsdp_devices == 2
+    assert config.lr_schedule.decay_steps == 100_000
+    assert config.policy_metadata["action_horizon"] == 16
+    assert config.policy_metadata["policy_action_dim"] == 16
+
+
+# ==================== AgiBot G01 π0.5 adaptation: independent 16-step config test END ====================
+
+
 def test_gripper_norm_stats_use_confirmed_physical_ranges():
     collapsed = {
         "state": normalize.NormStats(

@@ -923,6 +923,34 @@ _CONFIGS = [
             "action_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
         },
     ),
+    # ==================== AgiBot G01 π0.5 adaptation: independent 16-step train config BEGIN ====================
+    TrainConfig(
+        name="pi05_agibot_g01_h16",
+        model=pi0_config.Pi0Config(pi05=True, action_dim=32, action_horizon=16),
+        data=LeRobotAgiBotG01DataConfig(
+            repo_id="agibot/task_5093",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=2.5e-5,
+            decay_steps=100_000,
+            decay_lr=2.5e-6,
+        ),
+        batch_size=64,
+        num_train_steps=100_000,
+        fsdp_devices=2,
+        policy_metadata={
+            "robot_type": "agibot_g01",
+            "dataset_fps": 30,
+            "action_horizon": 16,
+            "policy_action_dim": 16,
+            "state_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
+            "action_order": ["left_arm_joint_position", "right_arm_joint_position", "left_gripper", "right_gripper"],
+        },
+    ),
+    # ==================== AgiBot G01 π0.5 adaptation: independent 16-step train config END ====================
     # ==================== AgiBot G01 π0.5 adaptation: registered train config END ====================
     #
     # Fine-tuning DROID configs.
