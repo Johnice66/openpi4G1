@@ -212,6 +212,16 @@ uv run scripts/serve_policy.py policy:checkpoint \
   --port 8000
 ```
 
+16 步多任务 checkpoint 必须改用对应的 `pi05_agibot_g01_h16` 配置：
+
+```bash
+uv run scripts/serve_policy.py policy:checkpoint \
+  --policy.config pi05_agibot_g01_h16 \
+  --policy.dir checkpoints/pi05_agibot_g01_h16/$EXP_NAME/99999 \
+  --policy.asset-id $ASSET_ID \
+  --port 8000
+```
+
 ## ROS2 客户端
 
 机器人环境必须提供 `rclpy`、`cv_bridge`、`sensor_msgs`、`genie_msgs`、NumPy 和 `openpi-client` 包。首先运行仅观察推理：
@@ -220,9 +230,12 @@ uv run scripts/serve_policy.py policy:checkpoint \
 python examples/agibot_g01/main.py \
   --policy-host 127.0.0.1 \
   --policy-port 8000 \
+  --expected-action-horizon 16 \
   --no-enable-control \
   --max-cycles 10
 ```
+
+`--expected-action-horizon` 默认是 16，并用于校验策略服务器返回的元数据。连接旧的 32 步 checkpoint 时，显式传入 `--expected-action-horizon 32`。
 
 检查日志中的动作 shape 和数值范围。只有确认机器人侧急停、碰撞保护、关节顺序和夹爪单位后，才能启用命令发布：
 

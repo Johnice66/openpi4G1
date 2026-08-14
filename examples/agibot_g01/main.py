@@ -40,6 +40,7 @@ class ClientConfig:
     sensor_ready_timeout: float = 30.0
     max_cycles: int = 0
     skip_metadata_check: bool = False
+    expected_action_horizon: int = 16
 
     enable_control: bool = False
     confirm_control: bool = True
@@ -90,6 +91,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sensor-ready-timeout", type=float, default=defaults.sensor_ready_timeout)
     parser.add_argument("--max-cycles", type=int, default=defaults.max_cycles)
     parser.add_argument("--skip-metadata-check", action="store_true")
+    parser.add_argument(
+        "--expected-action-horizon",
+        type=int,
+        default=defaults.expected_action_horizon,
+        help="Expected action_horizon advertised by the policy server.",
+    )
 
     parser.set_defaults(enable_control=defaults.enable_control, confirm_control=defaults.confirm_control)
     parser.add_argument("--enable-control", dest="enable_control", action="store_true")
@@ -137,6 +144,7 @@ def parse_config() -> ClientConfig:
         "policy_port": config.policy_port,
         "infer_timeout": config.infer_timeout,
         "sensor_ready_timeout": config.sensor_ready_timeout,
+        "expected_action_horizon": config.expected_action_horizon,
         "control_hz": config.control_hz,
         "model_fps": config.model_fps,
         "max_step_delta": config.max_step_delta,
@@ -392,7 +400,11 @@ def main() -> None:
         )
         metadata = policy.get_server_metadata()
         if not config.skip_metadata_check:
-            control_utils.validate_server_metadata(metadata, expected_horizon=32, expected_fps=int(config.model_fps))
+            control_utils.validate_server_metadata(
+                metadata,
+                expected_horizon=config.expected_action_horizon,
+                expected_fps=int(config.model_fps),
+            )
         control_status = "ENABLED" if config.enable_control else "disabled"
         node.get_logger().info(f"Connected to policy server; control={control_status}; metadata={metadata}")
 

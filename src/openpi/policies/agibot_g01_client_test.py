@@ -29,6 +29,13 @@ def test_server_metadata_validation():
         control_utils.validate_server_metadata(metadata)
 
 
+def test_server_metadata_validation_accepts_configurable_16_step_horizon():
+    metadata = {"robot_type": "agibot_g01", "action_horizon": 16, "policy_action_dim": 16, "dataset_fps": 30}
+    control_utils.validate_server_metadata(metadata, expected_horizon=16)
+    with pytest.raises(ValueError, match="metadata mismatch"):
+        control_utils.validate_server_metadata(metadata, expected_horizon=32)
+
+
 def test_joint_limiter_restricts_acceleration_and_speed():
     limiter = control_utils.JointSafetyLimiter(
         dim=1, dt=0.1, max_step_delta=1.0, max_speed=2.0, max_accel=1.0
