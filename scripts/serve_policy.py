@@ -28,6 +28,8 @@ class Checkpoint:
     config: str
     # Checkpoint directory (e.g., "checkpoints/pi0_aloha_sim/exp/10000").
     dir: str
+    # Optional asset id override for loading checkpoint-local norm stats.
+    asset_id: str | None = None
 
 
 @dataclasses.dataclass
@@ -85,12 +87,28 @@ def create_default_policy(env: EnvMode, *, default_prompt: str | None = None) ->
     raise ValueError(f"Unsupported environment mode: {env}")
 
 
+# ==================== AgiBot G01 π0.5 adaptation: checkpoint asset override BEGIN ====================
+def _with_checkpoint_asset_id(train_config: _config.TrainConfig, asset_id: str | None) -> _config.TrainConfig:
+    """Return a config that loads policy assets from a checkpoint-local asset id."""
+
+    if asset_id is None:
+        return train_config
+
+    assets = dataclasses.replace(train_config.data.assets, asset_id=asset_id)
+    data = dataclasses.replace(train_config.data, assets=assets)
+    policy_metadata = dict(train_config.policy_metadata or {})
+    policy_metadata["asset_id"] = asset_id
+    return dataclasses.replace(train_config, data=data, policy_metadata=policy_metadata)
+# ==================== AgiBot G01 π0.5 adaptation: checkpoint asset override END ====================
+
+
 def create_policy(args: Args) -> _policy.Policy:
     """Create a policy from the given arguments."""
     match args.policy:
         case Checkpoint():
+            train_config = _with_checkpoint_asset_id(_config.get_config(args.policy.config), args.policy.asset_id)
             return _policy_config.create_trained_policy(
-                _config.get_config(args.policy.config), args.policy.dir, default_prompt=args.default_prompt
+                train_config, args.policy.dir, default_prompt=args.default_prompt
             )
         case Default():
             return create_default_policy(args.env, default_prompt=args.default_prompt)

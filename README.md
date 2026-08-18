@@ -1,5 +1,7 @@
 # openpi
 
+项目内部结构、端到端流程以及 AgiBot G01 适配见[项目文档索引](docs/PROJECT_DOCUMENTATION.md)。
+
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
 Currently, this repo contains three types of models:

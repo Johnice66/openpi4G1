@@ -15,7 +15,16 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
     See WebsocketPolicyServer for a corresponding server implementation.
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: Optional[int] = None, api_key: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: Optional[int] = None,
+        api_key: Optional[str] = None,
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout BEGIN ====================
+        # Robot clients must be able to stop safely if the policy server stops responding.
+        receive_timeout: float | None = None,
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout END ====================
+    ) -> None:
         if host.startswith("ws"):
             self._uri = host
         else:
@@ -24,6 +33,9 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
             self._uri += f":{port}"
         self._packer = msgpack_numpy.Packer()
         self._api_key = api_key
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout BEGIN ====================
+        self._receive_timeout = receive_timeout
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout END ====================
         self._ws, self._server_metadata = self._wait_for_server()
 
     def get_server_metadata(self) -> Dict:
@@ -47,7 +59,9 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
     def infer(self, obs: Dict) -> Dict:  # noqa: UP006
         data = self._packer.pack(obs)
         self._ws.send(data)
-        response = self._ws.recv()
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout BEGIN ====================
+        response = self._ws.recv(timeout=self._receive_timeout)
+        # ==================== AgiBot G01 π0.5 adaptation: inference timeout END ====================
         if isinstance(response, str):
             # we're expecting bytes; if the server sends a string, it's an error.
             raise RuntimeError(f"Error in inference server:\n{response}")

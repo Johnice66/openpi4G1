@@ -89,6 +89,7 @@ def save_state(
 def restore_state(
     checkpoint_manager: ocp.CheckpointManager,
     state: training_utils.TrainState,
+    state_sharding: training_utils.TrainState,
     data_loader: _data_loader.DataLoader,
     step: int | None = None,
 ) -> training_utils.TrainState:
@@ -97,11 +98,30 @@ def restore_state(
     with at.disable_typechecking():
         # Split params that can be used for inference into a separate item.
         train_state, params = _split_params(state)
+        train_state_sharding, params_sharding = _split_params(state_sharding)
+        params_item = {"params": params}
+        params_sharding_item = {"params": params_sharding}
+
+        # Pass concrete target shardings so Orbax can restore checkpoints across different device topologies.
         restored = checkpoint_manager.restore(
             step,
             items={
                 "train_state": train_state,
-                "params": {"params": params},
+                "params": params_item,
+            },
+            restore_kwargs={
+                "train_state": {
+                    "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                        train_state,
+                        train_state_sharding,
+                    ),
+                },
+                "params": {
+                    "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                        params_item,
+                        params_sharding_item,
+                    ),
+                },
             },
         )
     return _merge_params(restored["train_state"], restored["params"])

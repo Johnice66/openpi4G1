@@ -5,11 +5,15 @@ will compute the mean and standard deviation of the data in the dataset and save
 to the config assets directory.
 """
 
+import dataclasses
+import pathlib
+
 import numpy as np
 import tqdm
 import tyro
 
 import openpi.models.model as _model
+from openpi.policies import agibot_g01_policy
 import openpi.shared.normalize as normalize
 import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
@@ -86,8 +90,27 @@ def create_rlds_dataloader(
     return data_loader, num_batches
 
 
-def main(config_name: str, max_frames: int | None = None):
+def main(
+    config_name: str,
+    dataset_root: pathlib.Path | None = None,
+    exclude_file: pathlib.Path | None = None,
+    max_frames: int | None = None,
+):
     config = _config.get_config(config_name)
+    # ==================== AgiBot G01 π0.5 adaptation: local stats root BEGIN ====================
+    # Norm stats must be computed from the transformed local task_5093 state/action, not raw Hub data.
+    if dataset_root is not None:
+        config = dataclasses.replace(
+            config,
+            data=dataclasses.replace(
+                config.data,
+                dataset_root=str(dataset_root),
+                exclude_file=None if exclude_file is None else str(exclude_file),
+            ),
+        )
+    elif isinstance(config.data, _config.LeRobotAgiBotG01DataConfig):
+        raise ValueError("pi05_agibot_g01 requires --dataset-root pointing to the task_5093 directory")
+    # ==================== AgiBot G01 π0.5 adaptation: local stats root END ====================
     data_config = config.data.create(config.assets_dirs, config.model)
 
     if data_config.rlds_data_dir is not None:
@@ -107,6 +130,10 @@ def main(config_name: str, max_frames: int | None = None):
             stats[key].update(np.asarray(batch[key]))
 
     norm_stats = {key: stats.get_statistics() for key, stats in stats.items()}
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization BEGIN ====================
+    if isinstance(config.data, _config.LeRobotAgiBotG01DataConfig):
+        norm_stats = agibot_g01_policy.apply_gripper_physical_norm_ranges(norm_stats)
+    # ==================== AgiBot G01 π0.5 adaptation: physical gripper normalization END ====================
 
     output_path = config.assets_dirs / data_config.repo_id
     print(f"Writing stats to: {output_path}")
